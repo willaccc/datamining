@@ -9,6 +9,10 @@ def num_matches(x, y, d_type):
     """
     Return number of matches between vector inputs. 
     vector inputs must have same length. 
+    params
+        x : one of the input, nominal or binary attribute
+        y : the other input, nominal or binary attribute
+        d_type : currently accepting 'nominal' or 'binary'
     """
     # initiate final value 
     n_matches = 0
@@ -50,6 +54,11 @@ def num_matches(x, y, d_type):
 def dissimilarity(x, y, d_type, method=None):
     """
     Return dissimilarity for nominal attributes and binary attributes. 
+    params
+        x : one of the input, nominal or binary attribute
+        y : the other input, nominal or binary attribute
+        d_type : currently accepting 'nominal' or 'binary'
+        method : binary use only, currently accepting 'symmetric' or 'asymmetric'
     """
     # check if method in the lists
     method_lst = ['symmetric', 'asymmetric']
@@ -76,6 +85,7 @@ def dissimilarity(x, y, d_type, method=None):
 def minkowski(x, y, h): 
     """
     Return minkowski distance. 
+    vector inputs must have same length. 
     """
     # check if x and y had same length 
     if len(x) != len(y):
