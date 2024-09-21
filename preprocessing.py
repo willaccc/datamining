@@ -2,7 +2,7 @@
 # author: Willa Cheng
 
 # this file includes functions caclulating similarities and distance 
-# based on chapter 3.4 of book Data Mining by Han, Kamber and Pei
+# based on chapter 3 of book Data Mining by Han, Kamber and Pei
 
 import numpy as np
 
