@@ -57,27 +57,23 @@ def apriori(D, min_sup):
     Returns:
         list: A list of frequent itemsets found in the database.
     """
-    D = np.array(D)
-    num_transactions = D.shape[0]
+    # Remove the numpy conversion
+    num_transactions = len(D)
     
     # Step 1: Count support of single items
-    unique_items, counts = np.unique(D.flatten(), return_counts=True)
-    L = {item: count for item, count in zip(unique_items, counts) if count >= min_sup}
+    unique_items = set(item for transaction in D for item in transaction)
+    L = {item: sum(1 for transaction in D if item in transaction) for item in unique_items if sum(1 for transaction in D if item in transaction) >= min_sup}
     
     frequent_itemsets = list(L.keys())
     all_frequent_itemsets = [frozenset([item]) for item in frequent_itemsets]
 
     k = 2
     while True:
-        # Generate candidates
         candidates = apriori_gen(all_frequent_itemsets, k)
-        
-        # Prune candidates using Apriori property
         candidates = {candidate for candidate in candidates if not has_infrequent_subset(candidate, all_frequent_itemsets)}
         
         candidate_count = {candidate: 0 for candidate in candidates}
         
-        # Step 4: Count support of candidates
         for transaction in D:
             for candidate in candidates:
                 if candidate.issubset(transaction):
