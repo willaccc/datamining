@@ -36,16 +36,26 @@ def apriori_gen(frequent_itemsets, k):
     candidates = set()
     len_frequent = len(frequent_itemsets)
     
+    logging.info(f"Generating candidates of size {k} from {len_frequent} frequent itemsets.")
+
     for i in range(len_frequent):
         for j in range(i + 1, len_frequent):
-            # Only join if the first k-2 items are the same
             l1 = list(frequent_itemsets[i])[:k-2]
             l2 = list(frequent_itemsets[j])[:k-2]
-            if l1 == l2:
-                new_candidate = frozenset(frequent_itemsets[i] | frequent_itemsets[j])
-                candidates.add(new_candidate)
+            if l1 == l2:  # Only join if first k-2 items are the same
+                new_candidate = frequent_itemsets[i] | frequent_itemsets[j]
+                if len(new_candidate) == k:  # Ensure candidate is of size k
+                    candidates.add(new_candidate)
+                    logging.debug(f"Candidate generated: {new_candidate}")
+
+    logging.info(f"Generated {len(candidates)} candidates of size {k}: {candidates}")
     
     return candidates
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+# # Configure logging
+# logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 def apriori(D, min_sup):
     """Find frequent itemsets in the transaction database using the Apriori algorithm.
@@ -57,7 +67,6 @@ def apriori(D, min_sup):
     Returns:
         list: A list of frequent itemsets found in the database.
     """
-    # Remove the numpy conversion
     num_transactions = len(D)
     
     # Step 1: Count support of single items
@@ -69,9 +78,20 @@ def apriori(D, min_sup):
 
     k = 2
     while True:
-        candidates = apriori_gen(all_frequent_itemsets, k)
-        candidates = {candidate for candidate in candidates if not has_infrequent_subset(candidate, all_frequent_itemsets)}
+        logging.info(f"Generating candidates for size {k}...")
         
+        candidates = apriori_gen(all_frequent_itemsets, k)
+        logging.info(f"Generated {len(candidates)} candidates: {candidates}")
+
+        # If no candidates, break the loop
+        if not candidates:
+            logging.info("No more candidates to generate. Exiting loop.")
+            break
+
+        candidates = {candidate for candidate in candidates if not has_infrequent_subset(candidate, all_frequent_itemsets)}
+
+        logging.info(f"Pruned candidates for size {k}: {candidates}")
+
         candidate_count = {candidate: 0 for candidate in candidates}
         
         for transaction in D:
@@ -80,11 +100,13 @@ def apriori(D, min_sup):
                     candidate_count[candidate] += 1
 
         L_k = {itemset for itemset, count in candidate_count.items() if count >= min_sup}
+        logging.info(f"Frequent itemsets of size {k}: {L_k}")
+
         if not L_k:
+            logging.info("No frequent itemsets found for this size. Exiting loop.")
             break
 
         all_frequent_itemsets.extend(L_k)
-        frequent_itemsets = list(L_k)
         k += 1
 
     return all_frequent_itemsets
@@ -117,7 +139,8 @@ class FPTree:
         """
         self.min_sup = min_sup
         self.header_table = {}
-        self.root = FPTreeNode('null')
+        self.root = FPTreeNode()
+        logging.info("Building FP-tree")
         self.build_tree(transactions)
 
     def build_tree(self, transactions):
@@ -126,23 +149,30 @@ class FPTree:
         Paramters:
             transactions (list of list): The transaction database.
         """
-        # Step 1: Count item frequencies
+        logging.debug("Counting item frequencies")
         item_count = defaultdict(int)
+
+        # Count item frequencies
         for transaction in transactions:
             for item in transaction:
                 item_count[item] += 1
 
         # Filter out items not meeting min_sup
         item_count = {item: count for item, count in item_count.items() if count >= self.min_sup}
-        
+        logging.debug(f"Filtered item counts: {item_count}")
+
+        if len(item_count) < 2:
+            logging.debug("Not enough items to build the tree. Skipping.")
+            return  # No need to build if less than 2 items remain
+
         # Sort items by frequency
         sorted_items = sorted(item_count.items(), key=lambda x: x[1], reverse=True)
         sorted_items = [item[0] for item in sorted_items]
 
-        # Step 2: Build the FP-tree
+        # Build the FP-tree
         for transaction in transactions:
             filtered_items = [item for item in sorted_items if item in transaction]
-            if filtered_items:
+            if len(filtered_items) > 1:  # Only proceed if more than one item
                 self.insert_tree(filtered_items)
 
     def insert_tree(self, items):
@@ -155,16 +185,30 @@ class FPTree:
         for item in items:
             if item in current_node.children:
                 current_node.children[item].increment()
+                logging.debug(f"Incremented count for item: {item}")
             else:
                 new_node = FPTreeNode(item)
                 current_node.children[item] = new_node
                 new_node.parent = current_node
-                
+                logging.debug(f"Inserted new node for item: {item}")
+
                 # Update header table
                 if item not in self.header_table:
                     self.header_table[item] = []
                 self.header_table[item].append(new_node)
+                logging.debug(f"Updated header table for item: {item}")
             current_node = current_node.children[item]
+
+    def get_prefix_path(self, node, path):
+        """Get the prefix path for a given node.
+
+        Paramters:
+            node (FPTreeNode): The node for which to retrieve the prefix path.
+            path (list): The list to which the prefix path will be added.
+        """
+        if node.parent and node.parent.item is not None:
+            path.append(node.parent.item)  # Append the full item name
+            self.get_prefix_path(node.parent, path)
 
     def mine_tree(self, prefix):
         """Mine the FP-tree for frequent itemsets.
@@ -177,36 +221,32 @@ class FPTree:
         """
         frequent_itemsets = []
         for item, nodes in sorted(self.header_table.items(), key=lambda x: x[0]):
-            # Calculate support for the item
             support = sum(node.count for node in nodes)
             if support >= self.min_sup:
                 new_prefix = prefix + [item]
-                frequent_itemsets.append((new_prefix, support))
-                
+                # Only add itemsets with more than one item
+                if len(new_prefix) > 1:
+                    frequent_itemsets.append((new_prefix, support))
+
                 # Construct conditional pattern base
                 conditional_patterns = []
                 for node in nodes:
                     path = []
                     self.get_prefix_path(node, path)
-                    if path:
-                        conditional_patterns.extend(path)
-                
-                # Build conditional FP-tree
-                conditional_tree = FPTree(conditional_patterns, self.min_sup)
-                # Mine the conditional tree
-                frequent_itemsets.extend(conditional_tree.mine_tree(new_prefix))
-        return frequent_itemsets
-    
-    def get_prefix_path(self, node, path):
-        """Get the prefix path for a given node.
+                    conditional_patterns.extend([path])
 
-        Paramters:
-            node (FPTreeNode): The node for which to retrieve the prefix path.
-            path (list): The list to which the prefix path will be added.
-        """
-        if node.parent and node.parent.item != 'null':
-            path.append(node.parent.item)
-            self.get_prefix_path(node.parent, path)
+                # Log the conditional patterns
+                logging.debug(f"Conditional patterns for item {item}: {conditional_patterns}")
+
+                # Build the conditional tree if there are multiple patterns
+                if len(conditional_patterns) > 1:
+                    conditional_tree = FPTree(conditional_patterns, self.min_sup)
+                    logging.info(f"Creating conditional FP-tree for item {item} with patterns: {conditional_patterns}")
+                    mined_itemsets = conditional_tree.mine_tree(new_prefix)
+                    frequent_itemsets.extend(mined_itemsets)
+                else:
+                    logging.debug(f"Not enough items for conditional tree for item {item}. Skipping.")
+        return frequent_itemsets
 
 def fp_growth(D, min_sup):
     """Find frequent itemsets using the FP-Growth algorithm.
@@ -218,7 +258,9 @@ def fp_growth(D, min_sup):
     Returns:
         list: A list of tuples containing frequent itemsets (as lists) and their support counts.
     """
-    # Create FP-tree
+    logging.info("Starting FP-Growth")
     tree = FPTree(D, min_sup)
-    # Mine the FP-tree for frequent itemsets
-    return tree.mine_tree([])
+    frequent_itemsets = tree.mine_tree([])
+    logging.info("FP-Growth completed")
+    logging.debug(f"Frequent Itemsets: {frequent_itemsets}")
+    return frequent_itemsets
